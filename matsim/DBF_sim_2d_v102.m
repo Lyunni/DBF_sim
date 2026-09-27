@@ -8,7 +8,7 @@ fc = 10e6;              % 载频 (Hz),可更改
 lambda = c/fc;          % 工作波长 (m)
 
 theta = pi/4;              % 波束指向俯仰角(相对+z轴),可更改,范围 0~pi
-phi = pi/2;                % 波束指向方位角(相对+x轴),可更改,范围 0~2pi
+phi = pi/4;                % 波束指向方位角(相对+x轴),可更改,范围 0~2pi
 theta_0 = 0;            % 输入信号到达方向俯仰角,可更改
 phi_0 = 0;              % 输入信号到达方向方位角,可更改
 
@@ -51,20 +51,7 @@ end
 floor_dB = -60;
 G_pattern_dB = 20*log10(max(G_pattern, 10^(floor_dB/20)));
 
-% ===== 图1: 二维方向图热力图(theta-phi 平面) =====
-h1 = figure('Name', '2D Beam Pattern', 'NumberTitle', 'off');
-imagesc(theta_scan_deg, phi_scan_deg, G_pattern_dB);
-axis xy;
-xlabel('入射俯仰角 \theta_0 (°)');
-ylabel('入射方位角 \phi_0 (°)');
-title(sprintf('二维方向图  %d×%d 阵元, fc=%.1f MHz, d_x=%.1f m, d_y=%.1f m', ...
-      array_m, array_n, fc/1e6, array_dx, array_dy));
-colorbar;
-clim([floor_dB 0]);
-colormap jet;
-print(h1, '-dpng', '-r200', fullfile(fileparts(mfilename('fullpath')), 'DBF_2d_pattern_heatmap.png'));
-
-% ===== 图2: 三维波束方向图(球坐标) =====
+% ===== 图1: 三维波束方向图(球坐标) =====
 % 用大窗口展示,真实数据比例,方向图实体占满坐标系
 h2 = figure('Name', '3D Beam Pattern', 'NumberTitle', 'off', 'Position', [100 100 1200 1000]);
 
@@ -111,9 +98,9 @@ view(120, 25);                  % 方位角 120°,仰角 25°
 colorbar;
 clim([floor_dB 0]);
 colormap jet;
-print(h2, '-dpng', '-r200', fullfile(fileparts(mfilename('fullpath')), 'DBF_2d_pattern_3d_6.png'));
+print(h2, '-dpng', '-r200', fullfile(fileparts(mfilename('fullpath')), 'DBF_2d_pattern_3d.png'));
 
-% ===== 图3: 主切面方向图(phi=0°/90°/180°/270°) =====
+% ===== 图2: 主切面方向图(phi=0°/90°/180°/270°) =====
 h3 = figure('Name', 'Beam Pattern Cuts', 'NumberTitle', 'off');
 [~, idx_phi0]   = min(abs(phi_scan_deg - 0));
 [~, idx_phi90]  = min(abs(phi_scan_deg - 90));
@@ -130,3 +117,23 @@ title('方向图主切面');
 grid on;
 ylim([floor_dB 0.5]);
 print(h3, '-dpng', '-r200', fullfile(fileparts(mfilename('fullpath')), 'DBF_2d_pattern_cuts.png'));
+
+% ===== 图3: 方位主平面方向图(固定 theta_0 = 波束俯仰角,扫描方位角) =====
+phi_cut_deg = 0:0.5:360;                 % 方位主平面扫描范围(°)
+phi_cut = deg2rad(phi_cut_deg);
+
+G_cut_az = zeros(size(phi_cut));         % 方位主平面增益
+for jj = 1:numel(phi_cut)
+    G_cut_az(jj) = DBF_gain_2d(fc, theta, phi, array_m, array_n, ...
+        array_dx, array_dy, theta, phi_cut(jj), x_in);
+end
+G_cut_az_dB = 20*log10(max(G_cut_az, 10^(floor_dB/20)));
+
+h4 = figure('Name', 'Azimuth Principal Plane Pattern', 'NumberTitle', 'off');
+plot(phi_cut_deg, G_cut_az_dB, 'LineWidth', 1.5); hold on;
+xline(rad2deg(phi), '--r', sprintf('波束指向 \\phi=%.1f°', rad2deg(phi)));
+xlabel('入射方位角 \phi_0 (°)');
+ylabel('归一化增益 (dB)');
+title(sprintf('方位主平面 (\\theta_0 = %.1f°)', rad2deg(theta)));
+grid on; ylim([floor_dB 0.5]); xlim([phi_cut_deg(1) phi_cut_deg(end)]);
+print(h4, '-dpng', '-r200', fullfile(fileparts(mfilename('fullpath')), 'DBF_2d_pattern_az_plane.png'));
