@@ -7,8 +7,8 @@ c = 3e8;                % 光速 (m/s)
 fc = 10e6;              % 载频 (Hz),可更改
 lambda = c/fc;          % 工作波长 (m)
 
-theta = pi/4;              % 波束指向俯仰角(相对+z轴),可更改,范围 0~pi
-phi = pi/2;                % 波束指向方位角(相对+x轴),可更改,范围 0~2pi
+theta = 0;              % 波束指向俯仰角(相对+z轴),可更改,范围 0~pi
+phi = 0;                % 波束指向方位角(相对+x轴),可更改,范围 0~2pi
 theta_0 = 0;            % 输入信号到达方向俯仰角,可更改
 phi_0 = 0;              % 输入信号到达方向方位角,可更改
 
@@ -19,8 +19,8 @@ N = K * (fs/fc);        % 采样点数(整周期数 -> FFT 无泄漏)
 t = (0:N-1)/fs;         % 时间轴
 
 % ===== 阵列参数(可更改) =====
-array_m = 8;            % x 向阵元数,可更改
-array_n = 8;           % y 向阵元数,可更改
+array_m = 4;           % x 向阵元数,可更改
+array_n = 12;            % y 向阵元数,可更改
 array_dx = 12.8;        % x 向阵元间距 (m),可更改
 array_dy = 12.8;        % y 向阵元间距 (m),可更改
 
@@ -162,88 +162,77 @@ title(az_title);
 grid on; ylim([floor_dB 0.5]); xlim([az_axis_deg(1) az_axis_deg(end)]);
 print(h4, '-dpng', '-r200', fullfile(fileparts(mfilename('fullpath')), 'DBF_2d_pattern_az_plane.png'));
 
-% ===== 主瓣 3dB 宽度:从仿真结果求算,与理论值对比 =====
-% 口径与 1D 版一致:找峰值 -> 两侧找 -3dB 点 -> interp1 插值 -> 相减得宽度(见 hpbw.m)。
-% 理论值取均匀阵列阵因子闭式解 |sin(M·u/2)/(M·sin(u/2))| 的 x/y 向乘积,
-% 沿与仿真完全相同的切点计算(退化分支同样是过极点带符号切面),
-% u→0 处 0/0 取极限 1(与 1D 版 abs(u)<1e-9 处理一致)。
-% 前提:单主瓣(无栅瓣)、非端射;越界情形不做一般化处理。
+% ===== 主瓣 3dB 宽度:过波束指向的全部取向切面,输出最大值/最小值 =====
+% 三维方向图的主瓣截面一般不是圆(非方阵列各向异性更明显),3dB 宽度随切面
+% 取向变化,单一主平面不能代表。这里以波束指向为轴,在 0~180° 内旋转切面
+% 取向角 psi(psi=0 为俯仰向,psi=90° 为方位向),沿每个取向的大圆做以波束
+% 为中心的带符号偏角扫描;切点用方向余弦表示,天顶/端射/下半球自动覆盖,
+% 无退化分支。逐取向用 hpbw 求 3dB 宽度(见 hpbw.m)后取最大值/最小值。
+% 理论值沿完全相同的切点用闭式阵因子 |sin(M·u/2)/(M·sin(u/2))| 的 x/y 向
+% 乘积计算,u→0 处 0/0 取极限 1(与 1D 版 abs(u)<1e-9 处理一致)。
+% 前提:单主瓣(无栅瓣);扫描窗宽按 1/cos(theta) 自适应加宽以覆盖端射展宽。
 % 注意:终端输出不做 TeX 解释,希腊字母直接写 Unicode 字符。
 
-% --- 精细俯仰切面(phi_0 = phi 所在平面) ---
-% 近天顶指向时主瓣跨过 theta_0 = 0 边界,改用带符号扫描(负角越过极点,
-% 等价于 |角| + 方位翻转 180°),与图3 退化分支同一处理。
-if ~az_degenerate
-    el_axis_deg = max(0, rad2deg(theta)-15) : 0.1 : min(90, rad2deg(theta)+15);
-    theta_el = deg2rad(el_axis_deg);
-    phi_el = phi * ones(size(el_axis_deg));
-    el_label = sprintf('俯仰主平面 (φ0 = %.1f° 固定, 扫描 θ0)', rad2deg(phi));
-else
-    el_axis_deg = -15:0.1:15;                       % 相对波束指向的带符号偏角
-    el_ang_deg = rad2deg(theta) + el_axis_deg;
-    theta_el = deg2rad(abs(el_ang_deg));
-    phi_el = phi + pi*(el_ang_deg < 0);
-    el_label = sprintf('俯仰主平面 (近天顶指向, φ0 = %.1f° 平面过极点)', rad2deg(phi));
+% --- 波束指向处的局部正交坐标系(任意指向均有定义) ---
+b  = [sin(theta)*cos(phi); sin(theta)*sin(phi); cos(theta)]; % 波束方向单位矢量
+e1 = [cos(theta)*cos(phi); cos(theta)*sin(phi); -sin(theta)]; % 俯仰向切矢量
+e2 = [-sin(phi); cos(phi); 0];                                % 方位向切矢量
+
+% --- 带符号偏角扫描窗:端射时主瓣按 1/cos(theta) 展宽,窗口自适应加宽 ---
+half_win_deg = max(15, min(45, 2*hpbw_est_deg/max(abs(cos(theta)), 0.2)));
+alpha_deg = -half_win_deg : 0.1 : half_win_deg;
+alpha = deg2rad(alpha_deg);
+
+psi_scan_deg = 0:5:175;             % 切面取向角(psi 与 psi+180° 为同一切面)
+bw_sim = zeros(size(psi_scan_deg));
+bw_theory = zeros(size(psi_scan_deg));
+
+for kk = 1:numel(psi_scan_deg)
+    psi = deg2rad(psi_scan_deg(kk));
+    e_psi = cos(psi)*e1 + sin(psi)*e2;              % 该取向的切面方向
+    D = b*cos(alpha) + e_psi*sin(alpha);            % 3×N 切点方向矢量(单位球面)
+    theta_cut = acos(min(max(D(3,:), -1), 1));      % 数值保护后转球坐标
+    phi_cut = atan2(D(2,:), D(1,:));
+
+    % 仿真:沿切点逐点调 DBF_gain_2d
+    G_cut = zeros(size(alpha));
+    for ii = 1:numel(alpha)
+        G_cut(ii) = DBF_gain_2d(fc, theta, phi, array_m, array_n, ...
+            array_dx, array_dy, theta_cut(ii), phi_cut(ii), x_in);
+    end
+    G_cut_dB = 20*log10(max(G_cut, 10^(floor_dB/20)));
+
+    % 理论:闭式阵因子,方向余弦差直接给出残差相位斜率
+    ux = 2*pi*array_dx*(D(1,:) - b(1))/lambda;
+    uy = 2*pi*array_dy*(D(2,:) - b(2))/lambda;
+    AFx = abs(sin(array_m*ux/2) ./ (array_m*sin(ux/2)));
+    AFy = abs(sin(array_n*uy/2) ./ (array_n*sin(uy/2)));
+    AFx(abs(ux) < 1e-9) = 1;
+    AFy(abs(uy) < 1e-9) = 1;
+    AF_dB = 20*log10(max(AFx .* AFy, 10^(floor_dB/20)));
+
+    % 峰值固定在偏角 0(波束指向)处,hpbw 直接求该取向的 3dB 宽度
+    bw_sim(kk) = hpbw(G_cut_dB, alpha_deg);
+    bw_theory(kk) = hpbw(AF_dB, alpha_deg);
 end
 
-G_cut_el = zeros(size(el_axis_deg));
-for ii = 1:numel(el_axis_deg)
-    G_cut_el(ii) = DBF_gain_2d(fc, theta, phi, array_m, array_n, ...
-        array_dx, array_dy, theta_el(ii), phi_el(ii), x_in);
+n_nan = sum(isnan(bw_sim));
+if n_nan > 0
+    warning('%d 个取向的主瓣 -3dB 点触及扫描边界(±%.1f°),该取向按缺失处理。', ...
+        n_nan, half_win_deg);
 end
-G_cut_el_dB = 20*log10(max(G_cut_el, 10^(floor_dB/20)));
 
-% --- 理论方向图(闭式阵因子,沿与仿真相同的切点) ---
-% 残差相位斜率:ux = 2*pi*dx*(sin(theta_0)*cos(phi_0) - sin(theta)*cos(phi))/lambda
-%             uy = 2*pi*dy*(sin(theta_0)*sin(phi_0) - sin(theta)*sin(phi))/lambda
-ux_az = 2*pi*array_dx*(sin(theta_az).*cos(phi_az) - sin(theta)*cos(phi))/lambda;
-uy_az = 2*pi*array_dy*(sin(theta_az).*sin(phi_az) - sin(theta)*sin(phi))/lambda;
-AFx_az = abs(sin(array_m*ux_az/2) ./ (array_m*sin(ux_az/2)));
-AFy_az = abs(sin(array_n*uy_az/2) ./ (array_n*sin(uy_az/2)));
-AFx_az(abs(ux_az) < 1e-9) = 1;
-AFy_az(abs(uy_az) < 1e-9) = 1;
-AF_az_dB = 20*log10(max(AFx_az .* AFy_az, 10^(floor_dB/20)));
-
-ux_el = 2*pi*array_dx*(sin(theta_el).*cos(phi_el) - sin(theta)*cos(phi))/lambda;
-uy_el = 2*pi*array_dy*(sin(theta_el).*sin(phi_el) - sin(theta)*sin(phi))/lambda;
-AFx_el = abs(sin(array_m*ux_el/2) ./ (array_m*sin(ux_el/2)));
-AFy_el = abs(sin(array_n*uy_el/2) ./ (array_n*sin(uy_el/2)));
-AFx_el(abs(ux_el) < 1e-9) = 1;
-AFy_el(abs(uy_el) < 1e-9) = 1;
-AF_el_dB = 20*log10(max(AFx_el .* AFy_el, 10^(floor_dB/20)));
-
-% --- 求 3dB 宽度(相对各自切面峰值) ---
-% 方位整圈扫描的峰值可能压在 0°/360° 边界上,求宽度前先循环平移使主瓣居中
-% (宽度为两侧 -3dB 点之差,与平移量无关,不影响结果)
-if ~az_degenerate
-    [~, kp_az] = max(G_cut_az_dB);
-    sh_az = round(numel(az_axis_deg)/2) - kp_az;
-    G_az_c  = circshift(G_cut_az_dB, sh_az);
-    AF_az_c = circshift(AF_az_dB,    sh_az);
-else
-    G_az_c  = G_cut_az_dB;
-    AF_az_c = AF_az_dB;
-end
-bw_az_sim    = hpbw(G_az_c,  az_axis_deg);
-bw_az_theory = hpbw(AF_az_c, az_axis_deg);
-bw_el_sim    = hpbw(G_cut_el_dB, el_axis_deg);
-bw_el_theory = hpbw(AF_el_dB,    el_axis_deg);
-
-% --- 控制台输出 ---
-if ~az_degenerate
-    az_label = sprintf('方位主平面 (θ0 = %.1f° 固定, 扫描 φ0)', rad2deg(theta));
-else
-    az_label = sprintf('方位正交切面 (近天顶指向, φ0 = %.1f° 平面过极点)', rad2deg(phi)+90);
-end
-fprintf('\n===== 主瓣 3dB 宽度 =====\n');
-fprintf('%s:\n', az_label);
-fprintf('  仿真结果: %.2f°\n', bw_az_sim);
-fprintf('  理论值:   %.2f°\n', bw_az_theory);
-fprintf('  偏差:     %+.2f° (%.2f %%)\n', bw_az_sim - bw_az_theory, ...
-    abs(bw_az_sim - bw_az_theory)/abs(bw_az_theory)*100);
-fprintf('%s:\n', el_label);
-fprintf('  仿真结果: %.2f°\n', bw_el_sim);
-fprintf('  理论值:   %.2f°\n', bw_el_theory);
-fprintf('  偏差:     %+.2f° (%.2f %%)\n', bw_el_sim - bw_el_theory, ...
-    abs(bw_el_sim - bw_el_theory)/abs(bw_el_theory)*100);
+% --- 控制台输出:最大值/最小值(max/min 自动忽略 NaN) ---
+[bw_sim_max, k_max] = max(bw_sim);
+[bw_sim_min, k_min] = min(bw_sim);
+bw_th_max = max(bw_theory);
+bw_th_min = min(bw_theory);
+fprintf('\n===== 主瓣 3dB 宽度(过波束指向的全部取向切面) =====\n');
+fprintf('仿真结果: 最大值/最小值 = %.2f°/%.2f° (取向 ψ = %.0f°/%.0f°)\n', ...
+    bw_sim_max, bw_sim_min, psi_scan_deg(k_max), psi_scan_deg(k_min));
+fprintf('理论值:   最大值/最小值 = %.2f°/%.2f°\n', bw_th_max, bw_th_min);
+fprintf('偏差:     %+.2f°/%+.2f° (%.2f%%/%.2f%%)\n', ...
+    bw_sim_max - bw_th_max, bw_sim_min - bw_th_min, ...
+    abs(bw_sim_max - bw_th_max)/abs(bw_th_max)*100, ...
+    abs(bw_sim_min - bw_th_min)/abs(bw_th_min)*100);
 
