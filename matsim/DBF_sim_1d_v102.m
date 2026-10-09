@@ -20,8 +20,8 @@ t = (0:N-1)/fs;         % 时间轴
 
 % ===== 输入信号:参考阵元(0号)收到的复载波 =====
 omega = 2*pi*fc;        % 载波角频率
-phi = 0;                % cu shi
-x_in = exp(1j*omega*t+phi); % 复指数载波,幅度为 1
+phi = 0;                % 初相
+x_in = exp(1j*(omega*t+phi)); % 复指数载波,幅度为 1
 
 % ===== 波束形成:归一化阵列增益 =====
 G = DBF_gain_1d(fc, theta, array_num, theta_0, x_in);
@@ -88,14 +88,7 @@ legend(sprintf('当前 fc=%.1f MHz (\\lambda=%.1f m)', fc/1e6, lamda), ...
 % 注意:终端输出不做 TeX 解释,希腊字母直接写 Unicode 字符或 ASCII,不能用 \lambda
 Pats = [G_dB; AF_lamda0_dB];               % 行1=蓝(当前λ),行2=红(λ0),峰值均 0 dB
 for i = 1:2
-    P  = Pats(i,:);
-    [pk, kp] = max(P);                       % 主瓣中心
-    th = pk - 3;                             % -3dB 阈值(相对本曲线峰值)
-    il = find(P(1:kp)   <= th, 1, 'last');   % 左 -3dB 所在区间下沿
-    ir = kp - 1 + find(P(kp:end) <= th, 1);  % 右 -3dB 所在区间上沿
-    th_L = interp1(P(il:il+1), theta0_scan_deg(il:il+1), th);
-    th_R = interp1(P(ir-1:ir), theta0_scan_deg(ir-1:ir), th);
-    bw3(i) = th_R - th_L;                    % 3dB 主瓣宽(°)
+    bw3(i) = hpbw(Pats(i,:), theta0_scan_deg);   % 找峰->两侧-3dB->插值,见 hpbw.m
 end
 display(['主瓣 3dB 宽度: ', num2str(bw3(1), '%.2f'), '° (当前 λ= ', num2str(lamda, '%.1f'), ' m)']);
 display(['参考 3dB 宽度: ', num2str(bw3(2), '%.2f'), '° (参考 λ0= ', num2str(lamda0, '%.1f'), ' m)']);
