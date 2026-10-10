@@ -19,10 +19,10 @@ N = K * (fs/fc);        % 采样点数(整周期数 -> FFT 无泄漏)
 t = (0:N-1)/fs;         % 时间轴
 
 % ===== 阵列参数(可更改) =====
-array_m = 4;           % x 向阵元数,可更改
-array_n = 12;            % y 向阵元数,可更改
-array_dx = 12.8;        % x 向阵元间距 (m),可更改
-array_dy = 12.8;        % y 向阵元间距 (m),可更改
+array_m = 8;           % x 向阵元数,可更改
+array_n = 8;            % y 向阵元数,可更改
+array_dx = 15.8;        % x 向阵元间距 (m),可更改
+array_dy = 15.8;        % y 向阵元间距 (m),可更改
 
 % ===== 输入信号:参考阵元(0,0)收到的复载波 =====
 omega = 2*pi*fc;        % 载波角频率
@@ -64,9 +64,9 @@ Z = R .* cos(THETA_SCAN);
 
 % 画方向图表面,用 dB 值着色
 s = surf(X, Y, Z, G_pattern_dB);
-s.EdgeColor = [0.3 0.3 0.3];    % 深灰色网格边
+s.EdgeColor = 'none';           % 不画网格边:近极点处网格线汇聚,会盖住主瓣面颜色
 s.FaceAlpha = 0.9;              % 轻微透明
-s.LineWidth = 0.2;
+shading interp;                 % 面内颜色插值,主瓣 dB 颜色连续可见
 hold on;
 
 % 真实数据范围(不添加额外边距,让方向图占满坐标系)
